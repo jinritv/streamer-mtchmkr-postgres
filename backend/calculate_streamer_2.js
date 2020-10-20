@@ -86,24 +86,32 @@ async function calculateStreamer(quizValues, callback) {
   const matchedStreamers = matchStreamers(prefs, allStreamers);
 
   // get required data for our streamers
-  let streamersResult = await Streamers.findAll({
-    attributes: ['user_name','logo'],
+  let orQuery = [];
+  matchedStreamers.forEach(m => {
+    orQuery.push({
+      id: m.id,
+    })
+  });
+  let rows = await Streamers.findAll({
+    attributes: ['id', 'user_name','logo'],
     where: {
-      [Op.or]: [
-        { id: matchedStreamers[0].id },
-        { id: matchedStreamers[1].id },
-        { id: matchedStreamers[2].id },
-        { id: matchedStreamers[3].id },
-        { id: matchedStreamers[4].id }
-      ]
+      [Op.or]: orQuery,
     }
   });
 
-  // add the match value to the result
-  const matchedStreamersResult = streamersResult.map((streamer,index)=> {
-    let streamerObj = Object.assign({}, {user_name: streamer.user_name, logo: streamer.logo });
+  let streamersMap = {};
+  rows.forEach(r => {
+    streamersMap[r.id] = r;
+  });
 
-    streamerObj.match_value = matchedStreamers[index].match_percent; // add our calculated match %
+  // add the match value to the result
+  const matchedStreamersResult = matchedStreamers.map(streamer => {
+    if (!(streamer.id in streamersMap)) {
+      throw "Streamer id ${streamer.id} not found in DB";
+    }
+    let r = streamersMap[streamer.id];
+    let streamerObj = Object.assign({}, {user_name: r.user_name, logo: r.logo });
+    streamerObj.match_value = streamer.match_percent; // add our calculated match %
     return streamerObj;
   })
 
@@ -312,7 +320,12 @@ function matchStreamers(prefs, streamers){
       
     // finally calculate the match % for our matched streamers and add them to the object we return back to the client
     let similarity = Math.round((scores/TOTAL_ATTRIBUTES)*100);
-    matchValues.push({id: streamer.id, streamer:[streamer.user_name], match_percent:similarity});
+    matchValues.push({
+      id: streamer.id,
+      streamer:streamer.user_name,
+      avg_viewer: streamer.StreamersStat.avg_viewers,
+      match_percent:similarity
+    });
   })
   
   // sort the streamers
@@ -328,13 +341,18 @@ function matchStreamers(prefs, streamers){
 
 // sorts the list of streamers by match percentage (highest first)
 function orderStreamers(a, b) {
-  if ( a.match_percent > b.match_percent ){
+  if (a.match_percent > b.match_percent) {
     return -1;
   }
-  if ( a.match_percent < b.match_percent ){
+  if (a.match_percent < b.match_percent) {
     return 1;
   }
-  return 0;
+
+  if (a.avg_viewer > b.avg_viewer) {
+    return -1;
+  }
+
+  return -1;
 }
 
 function collectStats(topStreamers, stats) {
