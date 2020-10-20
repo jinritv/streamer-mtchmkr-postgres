@@ -2,6 +2,45 @@
 const {Op} = require("sequelize");
 const {Streamers, StreamersStats, Languages, Categories, StreamersNationalities} = require("../models/models");
 
+// holds the values for the 'Points' of each attribute (an alternative to weighting?)
+const ATTRIBUTE_POINTS = {
+  age: 1.0,
+  avg_viewers: 1.0,
+  language: 1.0,
+  content: 1.5,
+  watchtime: 1.0,
+}
+
+// total of maximum score
+let TOTAL_ATTRIBUTES =  0;
+for (const [k, v] of Object.entries(ATTRIBUTE_POINTS)) {
+  TOTAL_ATTRIBUTES += v;
+}
+
+
+// key is content filter (input)
+// value is list of streamer category that can be considered
+// as criteria of the filter
+// Ex: If input is cooking, streamer must have cooking in it's category
+// but if input is food, streamer can have either food, or cooking
+const CAT_MAP = {
+  "dancing": ["dancing"],
+  "irl": ["irl"],
+  "music": ["music & performing arts", "singing", "piano", "music"],
+  "sciencetech": ["science & technology", "geoguessr"],
+  // HACK: For now, recreated_database.js splites categories in spreadsheet by comma or slash,
+  // resulting in "Just Chatting (yoga, cooking)" splited into "Just Chatting (yoga" and "cooking)"
+  // Should be fixed later
+  "yoga": ["just chatting (yoga"],
+  "movies": ["movies with viewers on discord"],
+  "outdoors": ["irl outdoors", "travel"],
+  "food": ["food", "cooking", "pepega cooking"],
+  "cooking": ["cooking", "pepega cooking"],
+  "ASMR": ["asmr"],
+  "games": ["games", "pepega gaming"],
+  "justchatting": ["irl", "just chatting", "pepega chatting"],
+}
+
 
 /**
  * Main business logic to find a matching streamer from user answers.
@@ -199,18 +238,10 @@ function matchStreamers(prefs, streamers){
   // stats to help score debugging
   let stats = {};
 
-  // holds the values for the 'Points' of each attribute (an alternative to weighting?)
-  const AttributePoints = {
-    age: 1.0,
-    avg_viewers: 1.0,
-    language: 1.0,
-    content: 1.0,
-    watchtime: 1.0,
-  }
-  let totalAttributes = 5;
-
   // array to store the matched streamers
   let matchValues = [];
+  let preferredLanguages = getLanguageNames(prefs.languages);
+  console.log("Input categories", prefs.content);
 
   streamers.forEach(streamer=>{
     // create an entry for the streamer in the score object
@@ -222,8 +253,8 @@ function matchStreamers(prefs, streamers){
       let DOBrange = getStreamerAgeRange(prefs.age);
       if(streamer.dob_year >= DOBrange[0] && streamer.dob_year <= DOBrange[1]){
         // if the dob is within range, increase the score
-        scores += AttributePoints.age;
-        stats[streamer.id]["age"] = AttributePoints.age;
+        scores += ATTRIBUTE_POINTS.age;
+        stats[streamer.id]["age"] = ATTRIBUTE_POINTS.age;
       }
     }
 
@@ -232,15 +263,14 @@ function matchStreamers(prefs, streamers){
       let viewerRange = getMinMaxViewers(prefs.average_viewers);
       if(streamer.StreamersStat.avg_viewers >= viewerRange[0] && streamer.StreamersStat.avg_viewers <= viewerRange[1] ){
           // if the average viewers is within range, increase the score
-          scores += AttributePoints.avg_viewers;
-          stats[streamer.id]["avg_viewers"] = AttributePoints.avg_viewers;
+          scores += ATTRIBUTE_POINTS.avg_viewers;
+          stats[streamer.id]["avg_viewers"] = ATTRIBUTE_POINTS.avg_viewers;
       }
     }
 
     // check against language preference
     // get the streamers and the user's language arrays
     let streamersLanguages = streamer.Languages.map(lang=>lang.language);
-    let preferredLanguages = getLanguageNames(prefs.languages);
     
     let totalLangMatch = 0;
     preferredLanguages.forEach(strLang=>{
@@ -250,31 +280,38 @@ function matchStreamers(prefs, streamers){
     });
     // count total match with total input (floating number)
     if (preferredLanguages.length != 0) {
-      let langScore = totalLangMatch * AttributePoints.language / preferredLanguages.length;
-      scores += langScore
-      stats[streamer.id]["language"] = langScore
+      let langScore = totalLangMatch * ATTRIBUTE_POINTS.language / preferredLanguages.length;
+      scores += langScore;
+      stats[streamer.id]["language"] = langScore;
     }
 
     //check against stream content
     let streamersCategories = streamer.Categories.map(cat=>cat.category);
-    let preferredCategories = getCategories(prefs.content);
 
     let totalCatMatch = 0;
-    preferredCategories.forEach(cat=>{
-      if(streamersCategories.includes(cat)){
-        totalCatMatch += 1;
-     }
+    prefs.content.forEach(parentCat=>{
+      if (!(parentCat in CAT_MAP)) {
+        throw `${parentCat} does not exist in category map`
+      }
+
+      let catMap = CAT_MAP[parentCat];
+      for (var i = 0; i < catMap.length; i++) {
+        if(streamersCategories.includes(catMap[i])){
+          totalCatMatch += 1;
+          break
+        }
+      }
     });
-    if (preferredCategories.length != 0) {
-      let catScore = totalCatMatch * AttributePoints.content / preferredCategories.length;
-      scores += catScore
-      stats[streamer.id]["content"] = catScore
+    if (prefs.content.length != 0) {
+      let catScore = totalCatMatch * ATTRIBUTE_POINTS.content / prefs.content.length;
+      scores += catScore;
+      stats[streamer.id]["content"] = catScore;
     }
 
     // TODO check against watch time (stream start/end time)
       
     // finally calculate the match % for our matched streamers and add them to the object we return back to the client
-    let similarity = Math.round((scores/totalAttributes)*100);
+    let similarity = Math.round((scores/TOTAL_ATTRIBUTES)*100);
     matchValues.push({id: streamer.id, streamer:[streamer.user_name], match_percent:similarity});
   })
   
@@ -341,41 +378,6 @@ function getStreamerAgeRange(ageRange) {
   const minDOB = Number(thisYear-ageRange.max || thisYear-75);
   
   return [minDOB, maxDOB];
-}
-
-
-function getCategories(contents) {
-  if(!contents) {
-    return [];
-  }
-
-  // Match frontend content names and backend category names
-  // TODO: move this out of function to prevent duplicate creations per function call
-  const nameMap = {
-    "dancing": ["dancing"],
-    "irl": ["irl", "pepega chatting", "just chatting"],
-    "music": ["music & performing arts", "singing", "piano", "music"],
-    "sciencetech": ["science & technology", "geoguessr"],
-    // HACK: For now, recreated_database.js splites categories in spreadsheet by comma or slash,
-    // resulting in "Just Chatting (yoga, cooking)" splited into "Just Chatting (yoga" and "cooking)"
-    // Should be fixed later
-    "yoga": ["just chatting (yoga"],
-    "movies": ["movies with viewers on discord"],
-    "outdoors": ["irl outdoors", "travel"],
-    "food": ["food", "cooking"],
-    "cooking": ["food", "pepega cooking", "cooking"],
-    "ASMR": ["asmr"],
-    "games": ["games", "pepega gaming"],
-    "justchatting": ["irl", "pepega chatting", "just chatting"],
-  }
-
-  const allCategories = [];
-  for(let content of contents) {
-    const categories = nameMap[content] || [];
-    allCategories.push(...categories);
-  }
-  // Unique categories
-  return [...new Set(allCategories)];
 }
 
 
