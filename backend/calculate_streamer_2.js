@@ -25,7 +25,7 @@ for (const [k, v] of Object.entries(ATTRIBUTE_POINTS)) {
 // but if input is food, streamer can have either food, or cooking
 const CAT_MAP = {
   "dancing": ["dancing"],
-  "irl": ["irl"],
+  "irl": ["irl", "irl outdoors"],
   "music": ["music & performing arts", "singing", "piano", "music"],
   "sciencetech": ["science & technology", "geoguessr"],
   // HACK: For now, recreated_database.js splites categories in spreadsheet by comma or slash,
