@@ -196,33 +196,34 @@ async function calculateStreamer(quizValues, callback) {
 */
 
 function matchStreamers(prefs, streamers){
-  // scores will keep track of all the values for each streamer as we iterate through the attributes
-  let scores = {};
+  // stats to help score debugging
+  let stats = {};
 
   // holds the values for the 'Points' of each attribute (an alternative to weighting?)
   const AttributePoints = {
-    age: 1,
-    avg_viewers: 1,
+    age: 1.0,
+    avg_viewers: 1.0,
     language: 1.0,
     content: 1.0,
-    watchtime: 1
+    watchtime: 1.0,
   }
-  let totalAttributes = AttributePoints.length;
+  let totalAttributes = 5;
 
   // array to store the matched streamers
   let matchValues = [];
 
   streamers.forEach(streamer=>{
-    let totalAttributes = 0;
     // create an entry for the streamer in the score object
-    scores[streamer.user_name] = 0;
+    let scores = 0.0;
+    stats[streamer.id] = {};
 
     // check against age preference
     if(streamer.dob_year){
       let DOBrange = getStreamerAgeRange(prefs.age);
       if(streamer.dob_year >= DOBrange[0] && streamer.dob_year <= DOBrange[1]){
         // if the dob is within range, increase the score
-        scores[streamer.user_name] += AttributePoints.age
+        scores += AttributePoints.age;
+        stats[streamer.id]["age"] = AttributePoints.age;
       }
     }
 
@@ -231,7 +232,8 @@ function matchStreamers(prefs, streamers){
       let viewerRange = getMinMaxViewers(prefs.average_viewers);
       if(streamer.StreamersStat.avg_viewers >= viewerRange[0] && streamer.StreamersStat.avg_viewers <= viewerRange[1] ){
           // if the average viewers is within range, increase the score
-          scores[streamer.user_name] += AttributePoints.avg_viewers;
+          scores += AttributePoints.avg_viewers;
+          stats[streamer.id]["avg_viewers"] = AttributePoints.avg_viewers;
       }
     }
 
@@ -239,41 +241,40 @@ function matchStreamers(prefs, streamers){
     // get the streamers and the user's language arrays
     let streamersLanguages = streamer.Languages.map(lang=>lang.language);
     let preferredLanguages = getLanguageNames(prefs.languages);
-
-    // add together ALL languages (we don't care about duplicates yet)
-    let totalLanguageAttributes = streamersLanguages.length + preferredLanguages.length;
     
     let totalLangMatch = 0;
-    prefferedLanguages.forEach(strLang=>{
-      if(streamersLanguage.includes(strLang)){
+    preferredLanguages.forEach(strLang=>{
+      if(streamersLanguages.includes(strLang)){
         totalLangMatch += 1;
      }
     });
     // count total match with total input (floating number)
-    if (prefferedLanguages.length != 0) {
-       scores[streamer.user_name] += totalLangMatch * AttributePoints.Language / preferredLanguages.length
+    if (preferredLanguages.length != 0) {
+      let langScore = totalLangMatch * AttributePoints.language / preferredLanguages.length;
+      scores += langScore
+      stats[streamer.id]["language"] = langScore
     }
 
     //check against stream content
     let streamersCategories = streamer.Categories.map(cat=>cat.category);
     let preferredCategories = getCategories(prefs.content);
 
-    let totalCategoryAttributes = streamersCategories.length + preferredCategories.length;
-   
     let totalCatMatch = 0;
     preferredCategories.forEach(cat=>{
       if(streamersCategories.includes(cat)){
         totalCatMatch += 1;
      }
     });
-    if (streamersCategories.length != 0) {
-      scores[streamer.user_name] += totalCatMatch * AttributePoints.Content / prefferedCategories.length
+    if (preferredCategories.length != 0) {
+      let catScore = totalCatMatch * AttributePoints.content / preferredCategories.length;
+      scores += catScore
+      stats[streamer.id]["content"] = catScore
     }
 
     // TODO check against watch time (stream start/end time)
       
     // finally calculate the match % for our matched streamers and add them to the object we return back to the client
-    let similarity = Math.round((scores[streamer.user_name]/totalAttributes)*100);
+    let similarity = Math.round((scores/totalAttributes)*100);
     matchValues.push({id: streamer.id, streamer:[streamer.user_name], match_percent:similarity});
   })
   
@@ -282,7 +283,9 @@ function matchStreamers(prefs, streamers){
 
   // we only want top 5
   let topStreamers = matchValues.slice(0,5);
+  let topStats = collectStats(topStreamers, stats);
   console.log(topStreamers);
+  console.log(topStats);
   return topStreamers;
 }
 
@@ -295,6 +298,14 @@ function orderStreamers(a, b) {
     return 1;
   }
   return 0;
+}
+
+function collectStats(topStreamers, stats) {
+  let topStats = [];
+  topStreamers.forEach(streamer=>{
+    topStats.push(stats[streamer.id])
+  });
+  return topStats
 }
 
 function getMinMaxViewers(average_viewers) {
