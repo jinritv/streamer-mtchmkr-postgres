@@ -11,6 +11,11 @@ const ATTRIBUTE_POINTS = {
   watchtime: 1.0,
 }
 
+const SCORE_NEAR_THRESHOLD = {
+  age: 5,
+  avg_viewers: 300,
+}
+
 // total of maximum score
 let TOTAL_ATTRIBUTES =  0;
 for (const [k, v] of Object.entries(ATTRIBUTE_POINTS)) {
@@ -259,21 +264,29 @@ function matchStreamers(prefs, streamers){
     // check against age preference
     if(streamer.dob_year){
       let DOBrange = getStreamerAgeRange(prefs.age);
-      if(streamer.dob_year >= DOBrange[0] && streamer.dob_year <= DOBrange[1]){
-        // if the dob is within range, increase the score
-        scores += ATTRIBUTE_POINTS.age;
-        stats[streamer.id]["age"] = ATTRIBUTE_POINTS.age;
-      }
+      let score = countNearScore(
+        ATTRIBUTE_POINTS.age,
+        streamer.dob_year,
+        DOBrange[0],
+        DOBrange[1],
+        SCORE_NEAR_THRESHOLD.age,
+      );
+      scores += score;
+      stats[streamer.id]["age"] = score;
     }
 
     // check against average viewers preference
     if(streamer.StreamersStat){
       let viewerRange = getMinMaxViewers(prefs.average_viewers);
-      if(streamer.StreamersStat.avg_viewers >= viewerRange[0] && streamer.StreamersStat.avg_viewers <= viewerRange[1] ){
-          // if the average viewers is within range, increase the score
-          scores += ATTRIBUTE_POINTS.avg_viewers;
-          stats[streamer.id]["avg_viewers"] = ATTRIBUTE_POINTS.avg_viewers;
-      }
+      let score = countNearScore(
+        ATTRIBUTE_POINTS.avg_viewers,
+        streamer.StreamersStat.avg_viewers,
+        viewerRange[0],
+        viewerRange[1],
+        SCORE_NEAR_THRESHOLD.avg_viewers,
+      );
+      scores += score;
+      stats[streamer.id]["avg_viewers"] = score;
     }
 
     // check against language preference
@@ -371,6 +384,30 @@ function getMinMaxViewers(average_viewers) {
   const minAvgViewer = Number(average_viewers.min || 2500);
   const maxAvgViewer = Number(average_viewers.max || 7500);
   return [minAvgViewer, maxAvgViewer];
+}
+
+// base score is score multiplier
+// val is actual value (input)
+// minimum and max value is range for the val to get 100% base score
+// threshold is maximum difference of value with range
+// value difference larger than threshold = 0
+function countNearScore(base_score, val, min_val, max_val, threshold) {
+  if (val >= min_val && val <= max_val) {
+    return base_score
+  }
+
+  let abs_diff = threshold + 1;
+  if (val < min_val) {
+    abs_diff = min_val - val;
+  } else if (val > max_val) {
+    abs_diff = val - max_val;
+  }
+
+  if (abs_diff > threshold) {
+    return 0
+  }
+
+  return base_score * Math.log(threshold + 1 - abs_diff) / Math.log(threshold + 1);
 }
 
 
