@@ -4,7 +4,7 @@ const {Streamers, StreamersStats, Languages, Categories, StreamersNationalities}
 
 // holds the values for the 'Points' of each attribute (an alternative to weighting?)
 const ATTRIBUTE_POINTS = {
-  age: 1.0,
+  age: 0.5,
   avg_viewers: 1.0,
   language: 1.0,
   content: 1.5,
@@ -42,7 +42,7 @@ const CAT_MAP = {
   "food": ["food", "cooking", "pepega cooking"],
   "cooking": ["cooking", "pepega cooking"],
   "ASMR": ["asmr"],
-  "games": ["games", "pepega gaming"],
+  "games": ["games", "pepega gaming", "half-life", "pubg"],
   "justchatting": ["irl", "just chatting", "pepega chatting"],
 }
 
@@ -254,7 +254,9 @@ function matchStreamers(prefs, streamers){
   // array to store the matched streamers
   let matchValues = [];
   let preferredLanguages = getLanguageNames(prefs.languages);
+  let normalizedWatchtime = normalizeWatchtime(prefs.watchtime);
   console.log("Input categories", prefs.content);
+  console.log("Normalized watchtime", normalizedWatchtime);
 
   streamers.forEach(streamer=>{
     // create an entry for the streamer in the score object
@@ -291,15 +293,13 @@ function matchStreamers(prefs, streamers){
 
     // check against language preference
     // get the streamers and the user's language arrays
-    let streamersLanguages = streamer.Languages.map(lang=>lang.language);
-    
     let totalLangMatch = 0;
+    let streamersLanguages = streamer.Languages.map(lang=>lang.language);
     preferredLanguages.forEach(strLang=>{
       if(streamersLanguages.includes(strLang)){
         totalLangMatch += 1;
      }
     });
-    // count total match with total input (floating number)
     if (preferredLanguages.length != 0) {
       let langScore = totalLangMatch * ATTRIBUTE_POINTS.language / preferredLanguages.length;
       scores += langScore;
@@ -307,9 +307,8 @@ function matchStreamers(prefs, streamers){
     }
 
     //check against stream content
-    let streamersCategories = streamer.Categories.map(cat=>cat.category);
-
     let totalCatMatch = 0;
+    let streamersCategories = streamer.Categories.map(cat=>cat.category);
     prefs.content.forEach(parentCat=>{
       if (!(parentCat in CAT_MAP)) {
         throw `${parentCat} does not exist in category map`
@@ -328,6 +327,15 @@ function matchStreamers(prefs, streamers){
       scores += catScore;
       stats[streamer.id]["content"] = catScore;
     }
+
+    // check for watch time
+    let watchtimeScore = calculateWatchtimeScore(
+      normalizedWatchtime,
+      streamer.StreamersStat.start_stream,
+      streamer.StreamersStat.avg_stream_duration
+    ) * ATTRIBUTE_POINTS.watchtime;
+    scores += watchtimeScore;
+    stats[streamer.id]["watchtime"] = watchtimeScore;
 
     // finally calculate the match % for our matched streamers and add them to the object we return back to the client
     let similarity = Math.round((scores/TOTAL_ATTRIBUTES)*100);
@@ -465,6 +473,105 @@ function getYesOrNo(condition) {
     return false;
   }
   return condition.toString().trim().toLowerCase() === "yes";
+}
+
+// only handle weekdays because thats all we have
+// on DB
+function normalizeWatchtime(input) {
+  if (input == undefined || !input.watchesWeekdays) {
+    return null
+  }
+
+  let from = new Date("January 5 1980 " + input.weekdayFrom);
+
+  // handling next date
+  let to_date = "5";
+  if (parseInt(input.weekdayFrom.replace(":", "")) > parseInt(input.weekdayTo.replace(":", ""))) {
+    to_date = "6";
+  }
+  let to = new Date("January "+to_date+" 1980 " + input.weekdayTo);
+
+  let fromT = new Date(from.getTime());
+  fromT.setDate(fromT.getDate() + 1);
+  let toT = new Date(to.getTime());
+  toT.setDate(toT.getDate() + 1);
+
+  let fromY = new Date(from.getTime());
+  fromY.setDate(fromY.getDate() - 1);
+  let toY = new Date(to.getTime());
+  toY.setDate(toY.getDate() - 1);
+
+  return [from, to, fromT, toT, fromY, toY]
+}
+
+// going to assume most streamers stream for 3 hours
+// if not defined in DB
+function calculateWatchtimeScore(input, start_time, stream_duration) {
+  if (input == null) {
+    return 1
+  }
+
+  if (start_time == null) {
+    return 0
+  }
+
+  if (stream_duration == null) {
+    stream_duration = 3;
+  }
+
+  let st_from = new Date("January 5 1980 "+start_time);
+  let st_to = new Date("January 5 1980 "+start_time);
+  st_to.setHours(st_to.getHours() + stream_duration);
+
+  // current
+  let s1 = compareTime(st_from, st_to, input[0], input[1]);
+  if (s1 != 0) {
+    return s1
+  }
+
+  // tomorrow
+  let s2 = compareTime(st_from, st_to, input[2], input[3]);
+  if (s2 != 0) {
+    return s2
+  }
+
+  // yesterday
+  return compareTime(st_from, st_to, input[4], input[5]);
+}
+
+function compareTime(st_from, st_to, d1, d2) {
+  let watch_duration = d2 - d1;
+  // check for full watchtime, stream duration is longer than input (within)
+  // a   |   |   b
+  // a: stream from
+  // b: stream end
+  // |: input
+  if (d1 >= st_from && d2 <= st_to) {
+    return 1
+  }
+
+  // input is longer than stream (surrounding)
+  // |  a   b  |
+  if (st_from >= d1 && st_to <= d2) {
+    return 1
+  }
+
+  // partial early
+  // | a | b
+  if (d1 < st_from && d2 < st_to && d2 > st_from) {
+    let watched = d2 - st_from;
+    return watched *1.0 / watch_duration;
+  }
+
+  // partial late
+  // a | b |
+  if (st_from < d1 && st_to < d2 && d1 < st_to) {
+    let watched = st_to - d1;
+    return watched *1.0 / watch_duration;
+  }
+
+  // outside range
+  return 0
 }
 
 
