@@ -329,8 +329,6 @@ function matchStreamers(prefs, streamers){
       stats[streamer.id]["content"] = catScore;
     }
 
-    // TODO check against watch time (stream start/end time)
-      
     // finally calculate the match % for our matched streamers and add them to the object we return back to the client
     let similarity = Math.round((scores/TOTAL_ATTRIBUTES)*100);
     matchValues.push({
