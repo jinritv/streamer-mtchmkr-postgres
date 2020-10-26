@@ -654,9 +654,9 @@ function setupStatsTooltipHover() {
 
 function statsTooltipColor(v) {
   if (v >= 70) {
-    return "#2ded2d"
+    return "#1df51d"
   } else if (v < 30) {
-    return "#e34444"
+    return "#f52525"
   }
 
   return "white"

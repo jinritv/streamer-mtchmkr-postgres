@@ -369,6 +369,7 @@ function matchStreamers(prefs, streamers){
 }
 
 // sorts the list of streamers by match percentage (highest first)
+// if percentage is the same, get random so we get different streamer
 function orderStreamers(a, b) {
   if (a.match_percent > b.match_percent) {
     return -1;
@@ -377,8 +378,8 @@ function orderStreamers(a, b) {
     return 1;
   }
 
-  if (a.avg_viewer > b.avg_viewer) {
-    return -1;
+  if (Math.random() > 0.5) {
+    return 1;
   }
 
   return -1;
