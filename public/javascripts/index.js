@@ -79,18 +79,7 @@ function setupElements() {
   
   $('.time').clockTimePicker({
     onClose: function() {
-      // adjust time
-      var offset = new Date().getTimezoneOffset();
-      let watchTime = {
-        watchesWeekend: ($(`#switch_watchtime_weekends`).prop("checked") == true),
-        watchesWeekdays:  ($(`#switch_watchtime_weekdays`).prop("checked") == true),
-        weekendFrom:  $("#watchtime-weekends-from").val(),
-        weekendTo: $("#watchtime-weekends-to").val(),
-        weekdayFrom:  $("#watchtime-weekdays-from").val(),
-        weekdayTo: $("#watchtime-weekdays-to").val(),
-        userOffsetMinute: offset * -1,
-      } 
-      UsersAnswers['watchtime'] = watchTime;
+      captureWatchtimeInput();
      },
      alwaysSelectHoursFirst: true,
      required: true,
@@ -610,4 +599,19 @@ function createNewStreamer(newStreamer) {
       }
     }
   });
+}
+
+function captureWatchtimeInput() {
+    // adjust time
+    var offset = new Date().getTimezoneOffset();
+    let watchTime = {
+      watchesWeekend: ($(`#switch_watchtime_weekends`).prop("checked") == true),
+      watchesWeekdays:  ($(`#switch_watchtime_weekdays`).prop("checked") == true),
+      weekendFrom:  $("#watchtime-weekends-from").val(),
+      weekendTo: $("#watchtime-weekends-to").val(),
+      weekdayFrom:  $("#watchtime-weekdays-from").val(),
+      weekdayTo: $("#watchtime-weekdays-to").val(),
+      userOffsetMinute: offset * -1,
+    } 
+    UsersAnswers['watchtime'] = watchTime;
 }
