@@ -88,7 +88,9 @@ async function calculateStreamer(quizValues, callback) {
   const allStreamers = JSON.parse(JSON.stringify(allStreamersArray));
   //console.log(allStreamers)
   // for each streamer we run the matchingFunction to get a value
-  const matchedStreamers = matchStreamers(prefs, allStreamers);
+  const matchResult = matchStreamers(prefs, allStreamers);
+  let matchedStreamers = matchResult[0];
+  let topStats = matchResult[1];
 
   // get required data for our streamers
   let orQuery = [];
@@ -115,12 +117,15 @@ async function calculateStreamer(quizValues, callback) {
       throw "Streamer id ${streamer.id} not found in DB";
     }
     let r = streamersMap[streamer.id];
-    let streamerObj = Object.assign({}, {user_name: r.user_name, logo: r.logo });
+    let streamerObj = Object.assign({}, {id: r.id, user_name: r.user_name, logo: r.logo });
     streamerObj.match_value = streamer.match_percent; // add our calculated match %
     return streamerObj;
   })
 
-  callback(matchedStreamersResult,null);
+  callback({
+    "result": matchedStreamersResult,
+    "stats": topStats,
+  }, null);
 
   /*
   // Two different types of queries needed for Sequelize
@@ -261,7 +266,13 @@ function matchStreamers(prefs, streamers){
   streamers.forEach(streamer=>{
     // create an entry for the streamer in the score object
     let scores = 0.0;
-    stats[streamer.id] = {};
+    stats[streamer.id] = {
+      "Age": 0,
+      "Viewers": 0,
+      "Language": 0,
+      "Content": 0,
+      "Watchtime": 0,
+    };
 
     // check against age preference
     if(streamer.dob_year){
@@ -274,7 +285,7 @@ function matchStreamers(prefs, streamers){
         SCORE_NEAR_THRESHOLD.age,
       );
       scores += score;
-      stats[streamer.id]["age"] = score;
+      stats[streamer.id]["Age"] = Math.ceil(score / ATTRIBUTE_POINTS.age * 100);
     }
 
     // check against average viewers preference
@@ -288,7 +299,7 @@ function matchStreamers(prefs, streamers){
         SCORE_NEAR_THRESHOLD.avg_viewers,
       );
       scores += score;
-      stats[streamer.id]["avg_viewers"] = score;
+      stats[streamer.id]["Viewers"] = Math.ceil(score / ATTRIBUTE_POINTS.avg_viewers * 100);
     }
 
     // check against language preference
@@ -303,7 +314,7 @@ function matchStreamers(prefs, streamers){
     if (preferredLanguages.length != 0) {
       let langScore = totalLangMatch * ATTRIBUTE_POINTS.language / preferredLanguages.length;
       scores += langScore;
-      stats[streamer.id]["language"] = langScore;
+      stats[streamer.id]["Language"] = Math.ceil(langScore / ATTRIBUTE_POINTS.language * 100);
     }
 
     //check against stream content
@@ -325,7 +336,7 @@ function matchStreamers(prefs, streamers){
     if (prefs.content.length != 0) {
       let catScore = totalCatMatch * ATTRIBUTE_POINTS.content / prefs.content.length;
       scores += catScore;
-      stats[streamer.id]["content"] = catScore;
+      stats[streamer.id]["Content"] = Math.ceil(catScore / ATTRIBUTE_POINTS.content * 100);
     }
 
     // check for watch time
@@ -335,7 +346,7 @@ function matchStreamers(prefs, streamers){
       streamer.StreamersStat.avg_stream_duration
     ) * ATTRIBUTE_POINTS.watchtime;
     scores += watchtimeScore;
-    stats[streamer.id]["watchtime"] = watchtimeScore;
+    stats[streamer.id]["Watchtime"] = Math.ceil(watchtimeScore / ATTRIBUTE_POINTS.watchtime * 100);
 
     // finally calculate the match % for our matched streamers and add them to the object we return back to the client
     let similarity = Math.round((scores/TOTAL_ATTRIBUTES)*100);
@@ -354,8 +365,7 @@ function matchStreamers(prefs, streamers){
   let topStreamers = matchValues.slice(0,5);
   let topStats = collectStats(topStreamers, stats);
   console.log(topStreamers);
-  console.log(topStats);
-  return topStreamers;
+  return [topStreamers, topStats];
 }
 
 // sorts the list of streamers by match percentage (highest first)
@@ -375,9 +385,9 @@ function orderStreamers(a, b) {
 }
 
 function collectStats(topStreamers, stats) {
-  let topStats = [];
+  let topStats = {};
   topStreamers.forEach(streamer=>{
-    topStats.push(stats[streamer.id])
+    topStats[streamer.id] = stats[streamer.id];
   });
   return topStats
 }

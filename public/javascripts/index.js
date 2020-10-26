@@ -37,6 +37,9 @@ var SLIDERS ={};
 // since we want to continue to increment/decrement when button is held
 var pressTimer;
 
+// statistic of scoring result
+var ResultStats = {};
+
 // This is called when the page is loaded
 $(() => {
   // setup our bootstrap elements like the sliders
@@ -115,6 +118,9 @@ function setupElements() {
   // disable the continue button by default
   $(`#continue-button`).prop('disabled',true);
   $(`#restart-button`).hide();
+
+  // statistic tooltip hovefr
+  setupStatsTooltipHover();
 }
 
 function setSliderEventHandlers(slider){
@@ -438,13 +444,15 @@ function calculateQuizResult() {
   });
 }
 
-function displayStreamerResults(streamers){
+function displayStreamerResults(results){
+  var streamers = results.result;
+  ResultStats = results.stats;
   streamers.forEach((streamer,index)=>{
     $(`#streamer-${index+1}-user_name`).text(streamer.user_name);
     $(`#streamer-${index+1}-logo`).attr('src',streamer.logo);
     $(`#streamer-${index+1}-match`).text(streamer.match_value);
     $(`#streamer-${index+1}-twitch_link`).attr("href", `https://twitch.tv/${streamer.user_name}`);
-    
+    $($(".streamer-info-container").get(index)).attr("streamer_id", streamer.id);
   });
 }
 
@@ -614,4 +622,42 @@ function captureWatchtimeInput() {
       userOffsetMinute: offset * -1,
     } 
     UsersAnswers['watchtime'] = watchTime;
+}
+
+function setupStatsTooltipHover() {
+  $(".streamer-info-container").tooltip({
+    placement: "right",
+    sanitize: false,
+    html: true,
+    title: function() {
+      var el = $(this);
+      var id = el.attr("streamer_id");
+      if (!(id in ResultStats)) {
+        return ""
+      }
+
+      var tooltip = "<table style='text-align: left'>";
+      for (var k in ResultStats[id]) {
+        var v = ResultStats[id][k];
+        var kColor = statsTooltipColor(v);
+        tooltip += "<tr>";
+          tooltip += "<td>" + k + "</td>";
+          tooltip += "<td>:</td>";
+          tooltip += "<td style='color:" + kColor + "'>" + v + "%</td>";
+        tooltip += "</tr>";
+      }
+      tooltip += "</table>";
+      return tooltip
+    },
+  })
+}
+
+function statsTooltipColor(v) {
+  if (v >= 70) {
+    return "#2ded2d"
+  } else if (v < 30) {
+    return "#e34444"
+  }
+
+  return "white"
 }
